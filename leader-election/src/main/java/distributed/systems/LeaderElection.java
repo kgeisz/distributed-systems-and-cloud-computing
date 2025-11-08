@@ -31,6 +31,7 @@ public class LeaderElection implements Watcher {
     }
   }
 
+  // Gracefully close all resources within the Zookeeper object
   public void close() throws InterruptedException {
     zooKeeper.close();
   }
@@ -45,6 +46,7 @@ public class LeaderElection implements Watcher {
         } else {
           synchronized (zooKeeper) {
             System.out.println("Received an event to disconnect from Zookeeper");
+            // Wake up the main thread so the application can exit
             zooKeeper.notifyAll();
           }
         }
