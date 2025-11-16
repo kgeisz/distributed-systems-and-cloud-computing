@@ -1,0 +1,38 @@
+Starting Worker application with PID: 8640
+null: Received event: None
+null: Worker node successfully connected to Zookeeper
+Doing work
+Adding child Znode
+worker_0000000116: Added child znode
+worker_0000000116: Working...
+worker_0000000116: Working...
+worker_0000000116: Working...
+worker_0000000116: Critical error happened
+Exception in thread "main" java.lang.RuntimeException: Oops
+	at Worker.work(Worker.java:57)
+	at Application.main(Application.java:35)
+Starting Worker application with PID: 8641
+null: Received event: None
+null: Worker node successfully connected to Zookeeper
+Doing work
+Adding child Znode
+worker_0000000117: Added child znode
+worker_0000000117: Working...
+worker_0000000117: Working...
+worker_0000000117: Critical error happened
+Exception in thread "main" java.lang.RuntimeException: Oops
+	at Worker.work(Worker.java:57)
+	at Application.main(Application.java:35)
+Starting Worker application with PID: 8642
+null: Received event: None
+null: Worker node successfully connected to Zookeeper
+Doing work
+Adding child Znode
+worker_0000000118: Added child znode
+worker_0000000118: Working...
+worker_0000000118: Working...
+worker_0000000118: Working...
+worker_0000000118: Critical error happened
+Exception in thread "main" java.lang.RuntimeException: Oops
+	at Worker.work(Worker.java:57)
+	at Application.main(Application.java:35)
