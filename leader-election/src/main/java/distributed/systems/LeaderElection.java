@@ -16,7 +16,6 @@ public class LeaderElection implements Watcher {
   private static final String ZOOKEEPER_ADDRESS = "localhost:2181";
   private static final int SESSION_TIMEOUT = 3000;
   private static final String ELECTION_NAMESPACE = "/election";
-  private static final String TARGET_ZNODE = "/target_znode";
 
   private ZooKeeper zooKeeper;
   private String currentZnodeName;
@@ -25,7 +24,7 @@ public class LeaderElection implements Watcher {
     LeaderElection leaderElection = new LeaderElection();
     leaderElection.connectToZookeeper();
     leaderElection.volunteerForLeadership();
-    leaderElection.electLeader();
+    leaderElection.reelectLeader();
     leaderElection.run();
     leaderElection.close();
     System.out.println("Disconnected from Zookeeper, exiting application");
@@ -50,20 +49,38 @@ public class LeaderElection implements Watcher {
     this.currentZnodeName = znodeFullPath.replace(ELECTION_NAMESPACE + "/", "");
   }
 
-  public void electLeader() throws InterruptedException, KeeperException {
-    // Get the children znode of the elected znode
-    // Returns a list of znodes names that are children with this znode
-    List<String> children =  zooKeeper.getChildren(ELECTION_NAMESPACE, false);
+  public void reelectLeader() throws InterruptedException, KeeperException {
+    String predecessorZnodeName = "";
+    Stat predecessorStat = null;
 
-    // Now, we want to find which znode has the smallest number, so we sort the list in ascending order
-    Collections.sort(children);
-    String smallestChild = children.get(0);
-    if (smallestChild.equals(this.currentZnodeName)) {
-      System.out.println(this.currentZnodeName + " is the leader");
-      return;
+    // This while loop prevents a race condition that can occur when we get the child znode, but it goes down
+    // before we can call exists() on it to establish a watcher
+    while (predecessorStat == null) {
+      // Get the children znode of the elected znode
+      // Returns a list of znodes names that are children with this znode
+      List<String> children = zooKeeper.getChildren(ELECTION_NAMESPACE, false);
+
+      // Now, we want to find which znode has the smallest number, so we sort the list in ascending order
+      Collections.sort(children);
+      String smallestChild = children.get(0);
+      if (smallestChild.equals(this.currentZnodeName)) {
+        System.out.println("I am " + this.currentZnodeName + ", and I am the leader");
+        return;
+      } else {
+        // Find the predecessor znode in the hierarchy to figure out what znode we need to watch for failures
+        // Use a fast binary search to find our index in the hierarchy, and then use it to get the predecessor's name
+        // We're not the leader in this 'if' block, so we are guaranteed to have at least one predecessor.
+        int predecessorIndex = Collections.binarySearch(children, this.currentZnodeName) - 1;
+        predecessorZnodeName = children.get(predecessorIndex);
+        // Call exists() on the full path of the znode we want to watch
+        // By calling exists(), this particular znode will get the watcher notification if the predecessor znode is deleted
+        predecessorStat = this.zooKeeper.exists(ELECTION_NAMESPACE + "/" + predecessorZnodeName, this);
+        System.out.println(
+                "I am " + this.currentZnodeName + ", and I am NOT the leader. The current leader is: " + smallestChild);
+      }
     }
-    System.out.println(
-            "I am " + this.currentZnodeName + ". I am NOT the leader. The current leader is: "+ smallestChild);
+    System.out.println("I am " + this.currentZnodeName + ", and I am watching " + predecessorZnodeName);
+    System.out.println();
   }
 
   public void connectToZookeeper() throws IOException {
@@ -83,22 +100,6 @@ public class LeaderElection implements Watcher {
     zooKeeper.close();
   }
 
-  public void watchTargetZnode() throws InterruptedException, KeeperException {
-    // Stat give us the metadata of the znode (creation time, number of children, etc.)
-    Stat stat = zooKeeper.exists(TARGET_ZNODE, this);
-    if (stat == null) {
-      System.out.println("stat is null. The target znode does not exist: " + TARGET_ZNODE);
-      return;
-    }
-
-    // Get the current data of the znode and register a watcher on any changes in this data
-    byte[] data = zooKeeper.getData(TARGET_ZNODE, this, stat);
-    // Get the znode's children and register a watcher on these children
-    List<String> children = zooKeeper.getChildren(TARGET_ZNODE, this);
-
-    System.out.println("Data: " + new String(data) + " children: " + children);
-  }
-
   @Override
   public void process(WatchedEvent event) {
     switch (event.getType()) {
@@ -115,28 +116,15 @@ public class LeaderElection implements Watcher {
         }
         break;
       case NodeDeleted:
-        System.out.println(TARGET_ZNODE + " was deleted");
-        break;
-      case NodeCreated:
-        System.out.println(TARGET_ZNODE + " was created");
-        break;
-      case NodeDataChanged:
-        System.out.println(TARGET_ZNODE + " had its data changed");
-        break;
-      case NodeChildrenChanged:
-        System.out.println(TARGET_ZNODE + " had changes to its children");
+        System.out.println("Attempting to reelect a leader");
+        try {
+          reelectLeader();
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
         break;
       default:
         System.out.println("Came across unhandled event type: " + event.getType().toString());
-    }
-    try {
-      // Get all the up-to-date changes and display it
-      // Also re-register the watchers for future events
-      this.watchTargetZnode();
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    } catch (KeeperException e) {
-      throw new RuntimeException(e);
     }
   }
 }
